@@ -1,0 +1,6 @@
+{
+  "name": "Inpatient Nurse Competency Assessment",
+  "description": "ระบบประเมินสมรรถนะ (Competency Assessment) สำหรับพยาบาลหอผู้ป่วยใน (IPD) อิงตามคู่มือประเมินของศูนย์ศรีพัฒน์",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

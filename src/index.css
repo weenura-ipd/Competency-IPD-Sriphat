@@ -1,0 +1,27 @@
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Sarabun:wght@300;400;500;600;700&display=swap');
+@import "tailwindcss";
+
+@theme {
+  --font-sans: 'Sarabun', 'Inter', system-ui, -apple-system, sans-serif;
+  --color-sriphat-purple: #5d2d91;
+  --color-sriphat-purple-dark: #4a2176;
+  --color-sriphat-green: #00a07d;
+  --color-sriphat-green-dark: #008164;
+}
+
+body {
+  font-family: 'Sarabun', 'Inter', system-ui, sans-serif;
+  background-color: #f8fafc;
+  color: #1e293b;
+}
+
+/* Custom printable layout styling */
+@media print {
+  .no-print {
+    display: none !important;
+  }
+  .print-only {
+    display: block !important;
+  }
+}
+
