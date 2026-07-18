@@ -199,6 +199,11 @@ export default function App() {
   const [isEditing, setIsEditing] = useState(false);
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
 
+  // Gap Analysis per Ward & Experience Group States
+  const [gapSelectedWard, setGapSelectedWard] = useState<string>(HOSPITAL_WARDS[0].name);
+  const [gapSelectedGroup, setGapSelectedGroup] = useState<ExperienceGroup>('novice');
+  const [gapChartType, setGapChartType] = useState<'radar' | 'bar'>('radar');
+
   // Initialize data on load
   useEffect(() => {
     const saved = localStorage.getItem('sriphat_nurses_data');
@@ -645,6 +650,68 @@ export default function App() {
       }))
       .sort((a, b) => b.count - a.count); // Most frequent gaps first
   }, [nurses]);
+
+  // Gap analysis for selected ward and experience group
+  const wardGroupGapData = useMemo(() => {
+    const wardObj = HOSPITAL_WARDS.find(w => w.name === gapSelectedWard);
+    const wardType = (wardObj?.type || 'adult') as 'adult' | 'pediatric_women';
+    const activeCompetencies = wardType === 'adult' 
+      ? [...CORE_COMPETENCIES, ...ADULT_SPECIFIC_COMPETENCIES] 
+      : [...CORE_COMPETENCIES, ...PEDIATRIC_SPECIFIC_COMPETENCIES];
+
+    const targetNurses = nurses.filter(n => n.ward === gapSelectedWard && n.experienceGroup === gapSelectedGroup);
+    const expected = EXPERIENCE_GROUPS[gapSelectedGroup].expectedEpa;
+
+    return activeCompetencies.map(c => {
+      let sum = 0;
+      let count = 0;
+      targetNurses.forEach(n => {
+        const score = n.scores[c.id];
+        if (score !== undefined) {
+          sum += score;
+          count++;
+        }
+      });
+      const actualAvg = count > 0 ? Math.round((sum / count) * 100) / 100 : 0;
+      const gapVal = count > 0 ? Math.round((actualAvg - expected) * 100) / 100 : 0;
+      
+      // Determine severity
+      let severity: 'none' | 'low' | 'high' = 'none';
+      if (count > 0 && gapVal < 0) {
+        severity = gapVal <= -2 ? 'high' : 'low';
+      }
+
+      // Generate training needs and recommendation
+      const gapInfo = generateGapAnalysis(c.code, c.thaiTitle, actualAvg, expected, c.thaiTitle);
+
+      return {
+        id: c.id,
+        code: c.code,
+        title: c.thaiTitle,
+        actualScore: actualAvg,
+        expectedScore: expected,
+        gap: gapVal,
+        countAssessed: count,
+        severity: count > 0 ? severity : 'none' as const,
+        trainingNeed: count > 0 ? gapInfo.trainingNeed : 'ไม่มีข้อมูลประเมินในกลุ่มนี้',
+        recommendation: count > 0 ? gapInfo.recommendation : 'กรุณาประเมินผลพยาบาลในกลุ่มนี้เพิ่มเติมเพื่อรับคำแนะนำหลักสูตร'
+      };
+    });
+  }, [nurses, gapSelectedWard, gapSelectedGroup]);
+
+  // Formatted data for the Selected Ward & Experience Group Chart
+  const gapChartData = useMemo(() => {
+    return wardGroupGapData.map(item => ({
+      subject: item.code,
+      thaiName: item.title,
+      'คะแนนที่ได้ (Actual)': item.actualScore,
+      'คะแนนคาดหวัง (Expected)': item.expectedScore
+    }));
+  }, [wardGroupGapData]);
+
+  const countSelectedSubNurses = useMemo(() => {
+    return nurses.filter(n => n.ward === gapSelectedWard && n.experienceGroup === gapSelectedGroup).length;
+  }, [nurses, gapSelectedWard, gapSelectedGroup]);
 
   // Trigger print dialog specifically tailored via index.css overrides
   const handlePrint = () => {
@@ -1713,6 +1780,251 @@ export default function App() {
                   ระบบวิเคราะห์ข้อมูลจะสืบค้นคะแนนผลการประเมินจากบุคลากรพยาบาลทุกคนในระบบเพื่อสืบค้นหา <strong className="text-amber-600">Competency Gaps</strong> ที่พบบ่อยที่สุดในองค์กรพยาบาลศรีพัฒน์ และนำมาจับคู่กับหลักสูตรพัฒนาพยาบาลที่สมควรจัดขึ้นเพื่อเติมเต็มทักษะต่อไปอย่างยั่งยืน
                 </p>
               </div>
+            </div>
+
+            {/* WARD AND EXPERIENCE GROUP GAP ANALYSIS SECTION */}
+            <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-6 space-y-6">
+              
+              {/* Filter controls and Header */}
+              <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 border-b border-slate-100 pb-4">
+                <div>
+                  <h3 className="font-bold text-slate-800 text-lg flex items-center gap-2">
+                    <Activity className="text-sriphat-purple" />
+                    <span>วิเคราะห์ช่องว่างผลประเมินรายหอผู้ป่วยและกลุ่มอายุงาน</span>
+                  </h3>
+                  <p className="text-xs text-slate-500 mt-1">
+                    เปรียบเทียบค่าเฉลี่ยคะแนนประเมิน (Actual) กับเกณฑ์เป้าหมายมาตรฐาน (Expected) แยกตามแผนกและประสบการณ์
+                  </p>
+                </div>
+                
+                <div className="no-print bg-slate-100 p-0.5 rounded-lg flex text-xs self-start md:self-auto">
+                  <button
+                    onClick={() => setGapChartType('radar')}
+                    className={`px-3 py-1.5 rounded-md font-bold transition-all ${gapChartType === 'radar' ? 'bg-white shadow text-sriphat-purple' : 'text-slate-500 hover:text-slate-800'}`}
+                  >
+                    แผนภาพเรดาร์ (Radar)
+                  </button>
+                  <button
+                    onClick={() => setGapChartType('bar')}
+                    className={`px-3 py-1.5 rounded-md font-bold transition-all ${gapChartType === 'bar' ? 'bg-white shadow text-sriphat-purple' : 'text-slate-500 hover:text-slate-800'}`}
+                  >
+                    แผนภาพแท่ง (Bar)
+                  </button>
+                </div>
+              </div>
+
+              {/* Selectors Panel */}
+              <div className="bg-slate-50 border border-slate-100 rounded-xl p-4 grid grid-cols-1 md:grid-cols-12 gap-4">
+                
+                {/* Ward Selector */}
+                <div className="md:col-span-5 space-y-1.5">
+                  <label className="text-xs font-bold text-slate-600 block">เลือกหอผู้ป่วย (Ward)</label>
+                  <select
+                    value={gapSelectedWard}
+                    onChange={(e) => setGapSelectedWard(e.target.value)}
+                    className="w-full bg-white border border-slate-200 rounded-lg py-2 px-3 text-sm font-medium text-slate-800 focus:outline-none focus:border-sriphat-purple focus:ring-1 focus:ring-sriphat-purple"
+                  >
+                    {HOSPITAL_WARDS.map((w) => (
+                      <option key={w.id} value={w.name}>
+                        {w.name}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                {/* Experience Group Selector */}
+                <div className="md:col-span-7 space-y-1.5">
+                  <label className="text-xs font-bold text-slate-600 block">เลือกกลุ่มอายุงาน (Experience Group)</label>
+                  <div className="grid grid-cols-5 gap-1">
+                    {(Object.keys(EXPERIENCE_GROUPS) as ExperienceGroup[]).map((gKey) => {
+                      const isActive = gapSelectedGroup === gKey;
+                      const g = EXPERIENCE_GROUPS[gKey];
+                      return (
+                        <button
+                          key={gKey}
+                          type="button"
+                          onClick={() => setGapSelectedGroup(gKey)}
+                          className={`py-2 px-1 text-center rounded-lg border text-xs font-bold transition-all flex flex-col justify-center items-center gap-0.5 ${
+                            isActive
+                              ? 'bg-sriphat-purple border-sriphat-purple text-white shadow-sm'
+                              : 'bg-white border-slate-200 text-slate-600 hover:bg-slate-50 hover:border-slate-300'
+                          }`}
+                        >
+                          <span className="truncate max-w-full">{g.title}</span>
+                          <span className={`text-[9px] ${isActive ? 'text-purple-200' : 'text-slate-400'} font-normal`}>
+                            ({g.rangeYears})
+                          </span>
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+
+              </div>
+
+              {/* Status Indicator / Summary of nurses found */}
+              <div className="flex flex-wrap items-center justify-between gap-2 text-xs bg-slate-50 border-l-4 border-sriphat-purple p-3 rounded-r-lg">
+                <div className="flex items-center gap-2">
+                  <Users className="h-4 w-4 text-sriphat-purple" />
+                  <span className="text-slate-700 font-medium">
+                    หอผู้ป่วย: <strong className="text-slate-900">{gapSelectedWard}</strong> | 
+                    กลุ่มอายุงาน: <strong className="text-slate-900">{EXPERIENCE_GROUPS[gapSelectedGroup].thaiTitle}</strong>
+                  </span>
+                </div>
+                <div className="flex items-center gap-1.5">
+                  <span className="font-semibold text-slate-500">จำนวนบุคลากรในกลุ่มนี้:</span>
+                  <span className={`px-2.5 py-0.5 rounded-full font-bold font-mono text-sm ${
+                    countSelectedSubNurses > 0 
+                      ? 'bg-purple-100 text-purple-800' 
+                      : 'bg-amber-100 text-amber-800'
+                  }`}>
+                    {countSelectedSubNurses} คน
+                  </span>
+                </div>
+              </div>
+
+              {/* Grid content containing Chart and Details */}
+              <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-stretch">
+                
+                {/* Chart Box */}
+                <div className="lg:col-span-5 bg-slate-50 rounded-xl border border-slate-100 p-4 flex flex-col justify-between min-h-[360px]">
+                  <div className="mb-2">
+                    <h4 className="font-bold text-slate-800 text-xs flex items-center gap-1.5">
+                      <Award className="text-sriphat-green h-4 w-4" />
+                      <span>แผนภาพเปรียบเทียบสมรรถนะ (EPA Level)</span>
+                    </h4>
+                    <p className="text-[10px] text-slate-400 font-normal">เป้าหมายมาตรฐาน (Expected) = {EXPERIENCE_GROUPS[gapSelectedGroup].expectedEpa} คะแนน</p>
+                  </div>
+
+                  {countSelectedSubNurses === 0 ? (
+                    <div className="flex-1 flex flex-col items-center justify-center p-8 text-center space-y-3 bg-white border border-dashed border-slate-200 rounded-lg min-h-[280px]">
+                      <AlertCircle className="h-10 w-10 text-amber-500 animate-pulse" />
+                      <div>
+                        <p className="text-sm font-bold text-slate-700">ไม่มีข้อมูลผลประเมินในหอผู้ป่วยและกลุ่มอายุงานที่เลือก</p>
+                        <p className="text-xs text-slate-400 mt-1 max-w-xs mx-auto leading-relaxed">
+                          ยังไม่มีการทำบันทึกประเมินพยาบาลที่มีอายุงานกลุ่มนี้ในวอร์ดนี้ กรุณาเพิ่มแบบประเมินพยาบาลรายใหม่ในเมนู "แบบบันทึกผลการประเมิน"
+                        </p>
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="flex-1 bg-white border border-slate-100 rounded-lg p-2 h-[280px] w-full">
+                      <ResponsiveContainer width="100%" height="100%">
+                        {gapChartType === 'radar' ? (
+                          <RadarChart cx="50%" cy="50%" outerRadius="75%" data={gapChartData}>
+                            <PolarGrid stroke="#e2e8f0" />
+                            <PolarAngleAxis dataKey="subject" tick={{ fill: '#475569', fontSize: 10, fontWeight: 'bold' }} />
+                            <PolarRadiusAxis angle={30} domain={[0, 5]} tick={{ fill: '#94a3b8', fontSize: 9 }} />
+                            <Radar
+                              name="คะแนนเฉลี่ยจริง (Actual)"
+                              dataKey="คะแนนที่ได้ (Actual)"
+                              stroke="#5d2d91"
+                              fill="#5d2d91"
+                              fillOpacity={0.25}
+                            />
+                            <Radar
+                              name="เกณฑ์เป้าหมาย (Expected)"
+                              dataKey="คะแนนคาดหวัง (Expected)"
+                              stroke="#00a07d"
+                              fill="#00a07d"
+                              fillOpacity={0.08}
+                            />
+                            <Tooltip content={<CustomTooltip />} />
+                            <Legend wrapperStyle={{ fontSize: '10px', paddingTop: '5px' }} />
+                          </RadarChart>
+                        ) : (
+                          <BarChart data={gapChartData} margin={{ top: 10, right: 10, left: -25, bottom: 5 }}>
+                            <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
+                            <XAxis dataKey="subject" tick={{ fill: '#475569', fontSize: 10, fontWeight: 'bold' }} />
+                            <YAxis domain={[0, 5]} tick={{ fill: '#94a3b8', fontSize: 9 }} />
+                            <Tooltip content={<CustomTooltip />} />
+                            <Legend wrapperStyle={{ fontSize: '10px', paddingTop: '5px' }} />
+                            <Bar dataKey="คะแนนเฉลี่ยจริง (Actual)" fill="#5d2d91" radius={[3, 3, 0, 0]} />
+                            <Bar dataKey="เกณฑ์เป้าหมาย (Expected)" fill="#00a07d" radius={[3, 3, 0, 0]} />
+                          </BarChart>
+                        )}
+                      </ResponsiveContainer>
+                    </div>
+                  )}
+                  
+                  {countSelectedSubNurses > 0 && (
+                    <p className="text-[10px] text-slate-400 mt-2 text-center font-normal">
+                      * คำนวณจากคะแนนเฉลี่ยสะสมของบุคลากรกลุ่มนี้จำนวน {countSelectedSubNurses} คน
+                    </p>
+                  )}
+                </div>
+
+                {/* Gap Table and Recommendations */}
+                <div className="lg:col-span-7 flex flex-col space-y-4">
+                  <div className="overflow-hidden border border-slate-200 rounded-xl bg-white shadow-inner flex-1 flex flex-col">
+                    <div className="bg-slate-50 border-b border-slate-200 px-4 py-3 flex items-center justify-between">
+                      <h4 className="font-bold text-slate-800 text-xs flex items-center gap-1.5">
+                        <TrendingDown className="text-rose-500 h-4 w-4" />
+                        <span>รายละเอียด Gap Analysis แยกตามรายข้อประเมิน (Competencies)</span>
+                      </h4>
+                      <span className="text-[10px] bg-slate-200 text-slate-700 px-2 py-0.5 rounded-full font-bold">
+                        {wardGroupGapData.length} หัวข้อ
+                      </span>
+                    </div>
+
+                    {countSelectedSubNurses === 0 ? (
+                      <div className="flex-1 flex items-center justify-center text-center p-8 text-slate-400 text-xs italic font-light">
+                        ไม่มีข้อมูลประเมินในกลุ่มนี้เพื่อคำนวณช่องว่างสมรรถนะ
+                      </div>
+                    ) : (
+                      <div className="overflow-y-auto max-h-[360px] divide-y divide-slate-100 flex-1">
+                        {wardGroupGapData.map((item) => {
+                          const hasGap = item.gap < 0;
+                          return (
+                            <div key={item.id} className={`p-3.5 flex flex-col sm:flex-row sm:items-start justify-between gap-3 transition-colors ${hasGap ? 'bg-rose-50/20 hover:bg-rose-50/40' : 'hover:bg-slate-50'}`}>
+                              <div className="space-y-1 max-w-lg">
+                                <div className="flex items-center gap-2">
+                                  <span className="text-[10px] font-bold font-mono bg-slate-700 text-white px-1.5 py-0.5 rounded">
+                                    {item.code}
+                                  </span>
+                                  <span className="text-sm font-semibold text-slate-800">{item.title}</span>
+                                </div>
+                                <p className="text-xs text-slate-500 italic leading-relaxed">
+                                  {hasGap ? `⚠️ ${item.trainingNeed}` : `✨ ${item.trainingNeed}`}
+                                </p>
+                                <p className="text-[10px] text-slate-400 font-light leading-relaxed">
+                                  <strong className="font-semibold text-slate-500">แผนพัฒนา:</strong> {item.recommendation}
+                                </p>
+                              </div>
+
+                              <div className="flex sm:flex-col items-end justify-between sm:justify-start gap-2 border-t sm:border-t-0 pt-2 sm:pt-0 border-slate-100 shrink-0">
+                                <div className="text-right">
+                                  <div className="text-slate-400 text-[10px]">Actual vs Expected</div>
+                                  <div className="text-sm font-bold font-mono text-slate-700">
+                                    {item.actualScore} <span className="text-slate-300 font-normal">/</span> {item.expectedScore}
+                                  </div>
+                                </div>
+
+                                {item.gap === 0 ? (
+                                  <span className="bg-emerald-100 text-emerald-800 text-[10px] font-bold px-2 py-0.5 rounded-full whitespace-nowrap">
+                                    เท่าเป้าหมาย (Met)
+                                  </span>
+                                ) : item.gap > 0 ? (
+                                  <span className="bg-emerald-500 text-white text-[10px] font-bold px-2 py-0.5 rounded-full whitespace-nowrap flex items-center gap-0.5">
+                                    +{item.gap} เกินเกณฑ์
+                                  </span>
+                                ) : (
+                                  <span className={`text-white text-[10px] font-bold px-2 py-0.5 rounded-full whitespace-nowrap ${
+                                    item.severity === 'high' ? 'bg-rose-600 animate-pulse' : 'bg-rose-400'
+                                  }`}>
+                                    {item.gap} ต่ำกว่าเกณฑ์
+                                  </span>
+                                )}
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    )}
+                  </div>
+                </div>
+
+              </div>
+
             </div>
 
             {/* TOP GAPS HOSPITAL-WIDE LIST */}
