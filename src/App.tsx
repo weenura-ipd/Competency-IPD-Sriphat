@@ -204,37 +204,51 @@ export default function App() {
   const [gapSelectedGroup, setGapSelectedGroup] = useState<ExperienceGroup>('novice');
   const [gapChartType, setGapChartType] = useState<'radar' | 'bar'>('radar');
 
-  // Initialize data on load
-  useEffect(() => {
-    const saved = localStorage.getItem('sriphat_nurses_data');
-    if (saved) {
-      try {
-        const parsed: Nurse[] = JSON.parse(saved);
-        if (parsed && parsed.length > 0) {
-          // Filter out the old mock/simulated evaluations (IDs like n_1 to n_12, length <= 4)
-          const realNurses = parsed.filter(n => n.id && n.id.length > 4);
-          if (realNurses.length > 0) {
-            setNurses(realNurses);
-            setSelectedNurseId(realNurses[0].id);
-            localStorage.setItem('sriphat_nurses_data', JSON.stringify(realNurses));
-            return;
-          }
-        }
-      } catch (e) {
-        console.error('Error loading local storage', e);
-      }
-    }
-    // Fallback to empty list (since INITIAL_MOCK_NURSES is now empty)
-    setNurses([]);
-    setSelectedNurseId('');
-    localStorage.setItem('sriphat_nurses_data', JSON.stringify([]));
-  }, []);
+// Initialize data from Firebase Firestore
+useEffect(() => {
+  const loadNursesFromFirebase = async () => {
+    try {
+      const querySnapshot = await getDocs(collection(db, 'nurses'));
+      const firebaseNurses: Nurse[] = querySnapshot.docs.map(
+        (docSnap) => ({
+          ...(docSnap.data() as Nurse),
+          id: docSnap.id
+        })
+      );
 
-  // Sync to local storage
-  const saveNursesToLocalStorage = (updated: Nurse[]) => {
-    setNurses(updated);
-    localStorage.setItem('sriphat_nurses_data', JSON.stringify(updated));
+      setNurses(firebaseNurses);
+
+      if (firebaseNurses.length > 0) {
+        setSelectedNurseId(firebaseNurses[0].id);
+      } else {
+        setSelectedNurseId('');
+      }
+    } catch (error) {
+      console.error('Error loading nurses from Firebase:', error);
+    }
   };
+
+  loadNursesFromFirebase();
+}, []);
+
+// Sync nurses to Firebase Firestore
+const saveNursesToLocalStorage = async (updated: Nurse[]) => {
+  setNurses(updated);
+
+  try {
+    for (const nurse of updated) {
+      if (!nurse.id) continue;
+
+      await setDoc(
+        doc(db, 'nurses', nurse.id),
+        nurse,
+        { merge: true }
+      );
+    }
+  } catch (error) {
+    console.error('Error saving nurses to Firebase:', error);
+  }
+};
 
   // Auto-detect experience group based on years of experience
   const handleExperienceYearsChange = (years: number) => {
@@ -366,16 +380,34 @@ export default function App() {
     setActiveTab('evaluate');
   };
 
-  // Delete nurse profile
-  const handleDeleteNurse = (id: string) => {
-    if (window.confirm('คุณแน่ใจหรือไม่ว่าต้องการลบผลการประเมินของบุคลากรรายนี้? (การกระทำนี้ไม่สามารถย้อนกลับได้)')) {
+// Delete nurse profile from Firebase Firestore
+const handleDeleteNurse = async (id: string) => {
+  if (
+    window.confirm(
+      'คุณแน่ใจหรือไม่ว่าต้องการลบผลการประเมินของบุคลากรรายนี้? (การกระทำนี้ไม่สามารถย้อนกลับได้)'
+    )
+  ) {
+    try {
+      // Delete from Firebase
+      await deleteDoc(doc(db, 'nurses', id));
+
+      // Update screen immediately
       const updated = nurses.filter(n => n.id !== id);
-      saveNursesToLocalStorage(updated);
-      if (selectedNurseId === id && updated.length > 0) {
-        setSelectedNurseId(updated[0].id);
+      setNurses(updated);
+
+      if (selectedNurseId === id) {
+        if (updated.length > 0) {
+          setSelectedNurseId(updated[0].id);
+        } else {
+          setSelectedNurseId('');
+        }
       }
+    } catch (error) {
+      console.error('Error deleting nurse from Firebase:', error);
+      alert('ไม่สามารถลบข้อมูลได้ กรุณาลองใหม่อีกครั้ง');
     }
-  };
+  }
+};
 
   // Prepare form for empty state / Add New Evaluation
   const handleAddNewEvaluation = () => {
