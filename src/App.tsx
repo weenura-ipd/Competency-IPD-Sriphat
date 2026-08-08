@@ -245,9 +245,12 @@ const saveNursesToLocalStorage = async (updated: Nurse[]) => {
         { merge: true }
       );
     }
-  } catch (error) {
+  } catch (error : any) {
     console.error('Error saving nurses to Firebase:', error);
   }
+  alert('Firebase Error: ' + (error?.message || error));
+
+}
 };
 
   // Auto-detect experience group based on years of experience
