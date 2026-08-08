@@ -313,7 +313,7 @@ const saveNursesToLocalStorage = async (updated: Nurse[]) => {
   };
 
   // Save/Submit Form Handler
-  const handleSaveEvaluation = (e: React.FormEvent) => {
+  const handleSaveEvaluation = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!formData.name.trim() || !formData.surname.trim() || !formData.employeeId.trim()) {
       alert('กรุณากรอกข้อมูลพื้นฐานพยาบาลให้ครบถ้วน');
@@ -348,7 +348,7 @@ const saveNursesToLocalStorage = async (updated: Nurse[]) => {
       setSuccessMessage('บันทึกผลการประเมินชุดใหม่สำเร็จเรียบร้อยแล้ว');
     }
 
-    saveNursesToLocalStorage(updated);
+   await saveNursesToLocalStorage(updated);
     setSelectedNurseId(targetNurse.id);
     setIsEditing(false);
     
