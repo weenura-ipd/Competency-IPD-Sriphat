@@ -232,25 +232,39 @@ useEffect(() => {
 }, []);
 
 // Sync nurses to Firebase Firestore
+
 const saveNursesToLocalStorage = async (updated: Nurse[]) => {
+
   setNurses(updated);
 
   try {
+
     for (const nurse of updated) {
+
       if (!nurse.id) continue;
 
       await setDoc(
-        doc(db, 'nurses', nurse.id),
-        nurse,
-        { merge: true }
-      );
-    }
-  } catch (error : any) {
-    console.error('Error saving nurses to Firebase:', error);
-  }
-  alert('Firebase Error: ' + (error?.message || error));
 
-}
+        doc(db, 'nurses', nurse.id),
+
+        nurse,
+
+        { merge: true }
+
+      );
+
+    }
+
+  } catch (error: any) {
+
+    console.error('Error saving nurses to Firebase:', error);
+
+    alert('Firebase Error: ' + (error?.message || error));
+
+    throw error;
+
+  }
+
 };
 
   // Auto-detect experience group based on years of experience
