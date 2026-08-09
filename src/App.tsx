@@ -52,7 +52,9 @@ import {
   Pie,
   Cell
 } from 'recharts';
+import { collection, getDocs, doc, setDoc, deleteDoc } from 'firebase/firestore';
 
+import { db } from './firebase';
 import { 
   ExperienceGroup, 
   EXPERIENCE_GROUPS, 
